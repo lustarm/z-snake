@@ -7,49 +7,44 @@ const sdl = @cImport({
 
 const MAX_BLOCKS = 5000;
 
-const Snake = struct {
-    head: Block,
-    length: i32,
-    body: std.ArrayList,
-
-    fn spawn(x: i32, y: i32) !Snake {
-        const b: Block = Block{ .x = x, .y = y};
-
-        var blocks: [MAX_BLOCKS]Block = try std.ArrayList(Block);
-
-        // ! pre-define the 1st
-        blocks[0].x = x;
-        blocks[0].y = y;
-        blocks[0].spawn();
-
-        for (1..5) |i| {
-            blocks[i].x = x + i;
-            blocks[i].y = y + i;
-
-            blocks[i].spawn();
-        }
-
-        // add asserts here later
-
-        return Snake {
-            .length = 5,
-            .head = b,
-            .body = blocks,
-        };
-    }
-};
-
 const Block = struct {
     x: i32,
     y: i32,
 
-    fn spawn(x: i32, y: i32) !Block {
-        print("spawning block\n", .{});
+    pub fn render(r: *sdl.SDL_Renderer, b: Block) !void {
+        sdl.SDL_RenderDrawRect(r, b.x, b.y, 20, 20);
+    }
+};
 
-        return Block {
-            .x = x,
-            .y = y,
+const Snake = struct {
+    head: Block,
+    length: i32,
+    body: []Block,
+
+    const Self = @This();
+
+    pub fn spawn(x: i32, y: i32, blocks: []Block) !Snake {
+        // ! pre-define the 1st
+        blocks[0].x = x;
+        blocks[0].y = y;
+
+        for (1..5) |i| {
+            // *****
+            blocks[i].x = x + @as(i32, @intCast(i));
+            blocks[i].y = y;
+        }
+
+        return Snake {
+            .length = 5,
+            .head = blocks[0],
+            .body = blocks,
         };
+    }
+
+    pub fn render(self: Self, r: *sdl.SDL_Renderer) !void {
+        for(0..5) |i| {
+            self.body[i].render(r);
+        }
     }
 };
 
@@ -79,6 +74,20 @@ pub fn main() !void {
 
     defer sdl.SDL_DestroyRenderer(r);
 
+    // ! create allocator
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+
+    const a = gpa.allocator();
+    const blocks = try a.alloc(Block, MAX_BLOCKS);
+
+    defer {
+        a.free(MAX_BLOCKS);
+        gpa.deinit();
+    }
+
+    // ! create snake
+    const snake: Snake = try Snake.spawn(10, 10, blocks);
+
     var quit = false;
     while(!quit) {
         var e: sdl.SDL_Event = undefined;
@@ -91,6 +100,12 @@ pub fn main() !void {
                 else => {} // ! do nothing
             }
         }
+
+        _ = sdl.SDL_RenderClear(r);
+        try snake.render(r);
+        sdl.SDL_RenderPresent(r);
+
+        sdl.SDL_Delay(5);
     }
 }
 

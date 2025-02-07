@@ -7,12 +7,46 @@ const sdl = @cImport({
 
 const MAX_BLOCKS = 5000;
 
+const HEIGHT = 400;
+const WIDTH = 300;
+
+const Direction = enum {
+    UP,
+    DOWN,
+    LEFT,
+    RIGHT,
+};
+
+const Tile = struct {
+    apple: bool,
+};
+
+const Map = struct {
+    tiles: []Tile,
+};
+
 const Block = struct {
     x: i32,
     y: i32,
 
-    pub fn render(r: *sdl.SDL_Renderer, b: Block) !void {
-        sdl.SDL_RenderDrawRect(r, b.x, b.y, 20, 20);
+    pub fn render(_: *Block, r: *sdl.SDL_Renderer, b: *Block, i: u32) !void {
+        var head = false;
+
+        if (i == 0) head = true;
+
+        const rect = sdl.SDL_Rect {
+            .h = 15,
+            .w = 15,
+            .x = b.x,
+            .y = b.y,
+        };
+
+        if(i == 0) _ = sdl.SDL_SetRenderDrawColor(r, 0, 255, 0, 255)
+        else _ = sdl.SDL_SetRenderDrawColor(r, 255, 0, 0, 255);
+
+        _ = sdl.SDL_RenderFillRect(r, &rect);
+        _ = sdl.SDL_RenderDrawRect(r, &rect);
+        _ = sdl.SDL_SetRenderDrawColor(r, 0, 0, 0, 255);
     }
 };
 
@@ -20,8 +54,7 @@ const Snake = struct {
     head: Block,
     length: i32,
     body: []Block,
-
-    const Self = @This();
+    dir: Direction,
 
     pub fn spawn(x: i32, y: i32, blocks: []Block) !Snake {
         // ! pre-define the 1st
@@ -30,7 +63,7 @@ const Snake = struct {
 
         for (1..5) |i| {
             // *****
-            blocks[i].x = x + @as(i32, @intCast(i));
+            blocks[i].x = x + @as(i32, @intCast(i)) * 20;
             blocks[i].y = y;
         }
 
@@ -38,13 +71,24 @@ const Snake = struct {
             .length = 5,
             .head = blocks[0],
             .body = blocks,
+            .dir = Direction.DOWN,
         };
     }
 
-    pub fn render(self: Self, r: *sdl.SDL_Renderer) !void {
+    pub fn render(self: *Snake, r: *sdl.SDL_Renderer) !void {
         for(0..5) |i| {
-            self.body[i].render(r);
+            switch(self.dir) {
+                Direction.DOWN => self.body[i].y += 2,
+                Direction.UP => self.body[i].y -= 2,
+                Direction.RIGHT => self.body[i].x += 2,
+                Direction.LEFT => self.body[i].x -= 2,
+            }
+            try self.body[i].render(r, &self.body[i], @intCast(i));
         }
+    }
+
+    pub fn input(_: *Snake) !void {
+
     }
 };
 
@@ -57,7 +101,7 @@ pub fn main() !void {
     defer sdl.SDL_Quit();
 
     // ! window
-    const win = sdl.SDL_CreateWindow("z-snake", sdl.SDL_WINDOWPOS_CENTERED, sdl.SDL_WINDOWPOS_CENTERED, 140, 400, sdl.SDL_WINDOW_OPENGL)
+    const win = sdl.SDL_CreateWindow("z-snake", sdl.SDL_WINDOWPOS_CENTERED, sdl.SDL_WINDOWPOS_CENTERED, 300, 400, sdl.SDL_WINDOW_OPENGL)
     orelse {
         sdl.SDL_Log("Unable to create window: %s", sdl.SDL_GetError());
         return error.SDLInitializationFailed;
@@ -76,17 +120,14 @@ pub fn main() !void {
 
     // ! create allocator
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
 
     const a = gpa.allocator();
     const blocks = try a.alloc(Block, MAX_BLOCKS);
-
-    defer {
-        a.free(MAX_BLOCKS);
-        gpa.deinit();
-    }
+    defer a.free(blocks);
 
     // ! create snake
-    const snake: Snake = try Snake.spawn(10, 10, blocks);
+    var snake: Snake = try Snake.spawn(10, 10, blocks);
 
     var quit = false;
     while(!quit) {
@@ -97,15 +138,19 @@ pub fn main() !void {
                 sdl.SDL_QUIT => {
                     quit = true;
                 },
+                sdl.SDL_KEYDOWN => {
+                    // change direction
+                },
                 else => {} // ! do nothing
             }
         }
 
         _ = sdl.SDL_RenderClear(r);
         try snake.render(r);
+        try snake.input();
         sdl.SDL_RenderPresent(r);
 
-        sdl.SDL_Delay(5);
+        sdl.SDL_Delay(10);
     }
 }
 
